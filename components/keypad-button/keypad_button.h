@@ -32,7 +32,7 @@ typedef struct button_event_data{
     uint32_t timestamp;             
 }button_event_data_t;
 
-typedef void (*buttonCallBack)(uint8_t button_id,button_event_data_t* evt);
+typedef void (*buttonCallBack)(uint8_t button_id,button_event_data_t* evt,void* context);
 
 
 typedef struct button_interface{
@@ -50,6 +50,7 @@ typedef struct button_config{
     pool_alloc_interface_t* timer_pool;           //to allocate and deallocate the timer object
     uint32_t scan_time_period;     //Button if pressed, its value must come in this time duration, if no presseed event comes, then button is released
     buttonCallBack cb;          //Callback to call  on a major event
+    void* context;  //To know which use (keypad) instance it belongs to
 }button_config_t;
 
 button_interface_t* keypadButtonCreate(button_config_t* config);
