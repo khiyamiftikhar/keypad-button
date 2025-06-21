@@ -1,0 +1,16 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.4.1
+  timer_impl:
+    dependencies: []
+    source:
+      path: E:\vscodeespidf\projectworkspace\keypad\components\timer_impl
+      type: local
+    version: '*'
+direct_dependencies:
+- timer_impl
+manifest_hash: 8bc326e1dc9d05bd1625abab88a5bf13891f35d642053ae49352c9a366e78be5
+target: esp32
+version: 2.0.0

@@ -1,0 +1,5 @@
+dependencies:
+  timer_impl:
+    path: "E:/vscodeespidf/projectworkspace/keypad/components/timer_impl"
+  #pool_alloc_interface:
+   # path: "E:\vscodeespidf\projectworkspace\pool-allocator\components\pool_alloc_interface"
