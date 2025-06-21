@@ -40,6 +40,7 @@ typedef struct keypad_button{
     uint32_t previous_time;     //For keeping track of debouncing duration and long press
     button_state_t state;
     buttonCallBack cb;        
+    void* context;              //To know which user (keyboard) instance it belongs to
     button_interface_t interface;
 }keypad_button_t;
 
@@ -160,7 +161,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             *previous_time=timer->timerGetCurrentTime();
 
                                             evt_data.event=BUTTON_EVENT_PRESSED;
-                                            btn->cb(btn->button_id,&evt_data);
+                                            btn->cb(btn->button_id,&evt_data,btn->context);
                                         }
                                         else
                                             next_button_state=current_button_state;
@@ -183,7 +184,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             //Again record time for repeat press detection
                                             *previous_time=timer->timerGetCurrentTime();
                                             evt_data.event=BUTTON_EVENT_PRESSED_LONG;
-                                            btn->cb(btn->button_id,&evt_data);
+                                            btn->cb(btn->button_id,&evt_data,btn->context);
                                             
                                         }
                                         else{
@@ -208,7 +209,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                              //This info must be propagated to user
                                             *previous_time=timer->timerGetCurrentTime();
                                             evt_data.event=BUTTON_EVENT_PRESSED_REPEAT;
-                                            btn->cb(btn->button_id,&evt_data);
+                                            btn->cb(btn->button_id,&evt_data,btn->context);
                                         }
                                         next_button_state=current_button_state;
                                     }
@@ -236,7 +237,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             next_button_state=BUTTON_STATE_RELEASED;
                                             
                                             evt_data.event=BUTTON_EVENT_RELEASED;
-                                            btn->cb(btn->button_id,&evt_data);
+                                            btn->cb(btn->button_id,&evt_data,btn->context);
                                     }
                                     timer->timerStart(&timer,TIMER_ONESHOT);
                                     break;
@@ -306,6 +307,7 @@ button_interface_t* keypadButtonCreate(button_config_t* config){
     self->timer_pool=config->timer_pool;
     self->timer=NULL;                               //Timer is allocated dynamically
     //self->timer_pool=timer_pool;
+    self->context=config->context;
     self->cb=cb;
 
     return self;
