@@ -56,7 +56,4 @@ typedef struct button_config{
 button_interface_t* keypadButtonCreate(button_config_t* config);
 
 
-
-
-
 #endif
