@@ -32,7 +32,7 @@ typedef struct button_event_data{
     uint32_t timestamp;             
 }button_event_data_t;
 
-typedef void (*buttonCallBack)(uint8_t button_id,button_event_data_t* evt,void* context);
+typedef void (*buttonCallBack)(uint8_t button_index,button_event_data_t* evt,void* context);
 
 
 typedef struct button_interface{

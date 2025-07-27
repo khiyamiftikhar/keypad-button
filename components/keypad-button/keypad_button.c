@@ -161,7 +161,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             *previous_time=timer->timerGetCurrentTime();
 
                                             evt_data.event=BUTTON_EVENT_PRESSED;
-                                            btn->cb(btn->button_id,&evt_data,btn->context);
+                                            btn->cb(btn->button_index,&evt_data,btn->context);
                                         }
                                         else
                                             next_button_state=current_button_state;
@@ -184,7 +184,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             //Again record time for repeat press detection
                                             *previous_time=timer->timerGetCurrentTime();
                                             evt_data.event=BUTTON_EVENT_PRESSED_LONG;
-                                            btn->cb(btn->button_id,&evt_data,btn->context);
+                                            btn->cb(btn->button_index,&evt_data,btn->context);
                                             
                                         }
                                         else{
@@ -209,7 +209,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                              //This info must be propagated to user
                                             *previous_time=timer->timerGetCurrentTime();
                                             evt_data.event=BUTTON_EVENT_PRESSED_REPEAT;
-                                            btn->cb(btn->button_id,&evt_data,btn->context);
+                                            btn->cb(btn->button_index,&evt_data,btn->context);
                                         }
                                         next_button_state=current_button_state;
                                     }
@@ -237,7 +237,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             next_button_state=BUTTON_STATE_RELEASED;
                                             
                                             evt_data.event=BUTTON_EVENT_RELEASED;
-                                            btn->cb(btn->button_id,&evt_data,btn->context);
+                                            btn->cb(btn->button_index,&evt_data,btn->context);
                                     }
                                     timer->timerStart(&timer,TIMER_ONESHOT);
                                     break;
