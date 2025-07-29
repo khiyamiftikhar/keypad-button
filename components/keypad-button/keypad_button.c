@@ -44,6 +44,7 @@ typedef struct keypad_button{
     buttonCallBack cb;        
     void* context;              //To know which user (keyboard) instance it belongs to
     button_interface_t interface;
+    uint32_t debug_previous_time;     //For keeping track of intervals between state machine runs
 }keypad_button_t;
 
 
@@ -110,7 +111,9 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
             return 1;
         //Add the user context, to be used in the timer callback in the main keypad   
         btn->timer->timerRegisterUserContext(btn->timer,(void*)self);
-        
+        //This is the first occurance so set previous time to 0;
+        btn->previous_time=0;   //For debouncing and long press
+        btn->debug_previous_time=0;//To keep track of duration between state machine runs
     }
 
     timer_interface_t* timer=btn->timer;
@@ -125,7 +128,8 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     
     evt_data.timestamp=current_time;
 
-    ESP_LOGI(TAG,"button mp event %d",evt);
+    //ESP_LOGI(TAG,"button mp event %d",evt);
+    //ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,btn->debug_previous_time,current_time,current_time-btn->debug_previous_time);
 
     switch(current_button_state){
         
@@ -154,7 +158,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
                                     
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
 
                                     break;
 
@@ -167,19 +171,20 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                         next_button_state=BUTTON_STATE_PROBABLE_PRESS;
                                     }
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
                                     break;
                                     
 
         case BUTTON_STATE_PRESSED_BOUNCING_MAKE: //Timer allocated, if it stays BOUNCING, for BOUNCING_TIME
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
-                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
+                                        //ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>DEBOUNCING_DURATION){
                                              next_button_state=BUTTON_STATE_PRESSED;
                                              //Again record time for long press detection
                                             *previous_time=timer->timerGetCurrentTime();
 
                                             evt_data.event=BUTTON_EVENT_PRESSED;
+                                            ESP_LOGI(TAG,"button index %d, val %d",btn->button_index,evt_data.button_id);
                                             btn->cb(btn->button_index,&evt_data,btn->context);
                                         }
                                         else
@@ -190,13 +195,13 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
 
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
 
                                     break;
 
         case BUTTON_STATE_PRESSED:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
-                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
+                                        //ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>LONG_PRESS_DURATION){
                                             next_button_state=BUTTON_STATE_PRESSED_LONG;
                                             
@@ -218,13 +223,13 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
 
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
                                     
                                     break;                                        
 
         case BUTTON_STATE_PRESSED_LONG:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
-                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
+                                        //ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>REPEAT_PRESS_DURATION){
                                              //Again record time for repeat press detection
                                              //This info must be propagated to user
@@ -237,27 +242,29 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     else{
                                         next_button_state=BUTTON_STATE_RELEASED_BOUNCING_BREAK;
                                     }
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
                                     break;                                        
         case BUTTON_STATE_RELEASED_BOUNCING_BREAK:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED)
-                                            next_button_state=BUTTON_STATE_PRESSED_LONG;
+                                            next_button_state=BUTTON_STATE_PRESSED;
                                             
                                     else{
-                                            next_button_state=BUTTON_STATE_PRESSED_BOUNCING_MAKE;
+                                            next_button_state=BUTTON_STATE_RELEASED_BOUNCING_MAKE;
                                     }
-                                    timer->timerStart(timer,TIMER_ONESHOT);
+                                    timer->timerRestart(timer);
 
                                     break;
 
         case BUTTON_STATE_RELEASED_BOUNCING_MAKE:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
-                                            next_button_state=BUTTON_STATE_PRESSED_BOUNCING_BREAK;
-                                            timer->timerStart(timer,TIMER_ONESHOT);
+                                            next_button_state=BUTTON_STATE_RELEASED_BOUNCING_BREAK;
+                                            timer->timerRestart(timer);
                                     }
                                             
                                     else{
                                             next_button_state=BUTTON_STATE_IDLE;
+                                            //Stop the timer
+                                            timer->timerStop(timer);
                                             //Return the timer to pool
                                             timerReturn(timer_pool,timer);
                                             evt_data.event=BUTTON_EVENT_RELEASED;
@@ -277,6 +284,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     }
 
     *state=next_button_state;
+    btn->debug_previous_time=current_time;
     ESP_LOGI(TAG,"bt st %d",*state);
     return 0;
 }
