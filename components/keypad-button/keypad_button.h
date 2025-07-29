@@ -6,14 +6,14 @@
 
 
 #define         ERR_BUTTON_BASE                 0
-#define         ERR_BUTTON_INVALID_MEM          (ERR_BUTTON_BASE-1)
+//#define         ERR_BUTTON_INVALID_MEM          ( ERR_BUTTON_BASE-1 )
 
 
 //Events of the GPIO related to the button. incoming events
 typedef enum{
-            BUTTON_EVENT_PRESSED=0,
+            BUTTON_STATE_EVENT_PRESSED=0,
             //BUTTON_EVENT_RELASED, This event will never come, that is why timer is used
-            BUTTON_TIMER_ELAPSED
+            BUTTON_STATE_EVENT_TIMER_ELAPSED
             }button_state_update_event_t;
 
 
