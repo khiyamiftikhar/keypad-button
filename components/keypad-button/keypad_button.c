@@ -36,7 +36,7 @@ typedef enum{
 typedef struct keypad_button{
     uint8_t button_index;
     uint8_t button_id;
-    void* timer;                //typecasted internally    
+    timer_interface_t* timer;                //typecasted internally, This addded Later->bcz timer pool store void pointer    
     void* timer_pool;           //to allocate and deallocate the timer object
     uint32_t time_period;       //The time period for the timer.
     uint32_t previous_time;     //For keeping track of debouncing duration and long press
@@ -101,10 +101,18 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     
     pool_alloc_interface_t* timer_pool = (pool_alloc_interface_t*) btn->timer_pool;
 
-    btn->timer=timerAllocate(timer_pool);
 
-    if(btn->timer==NULL)
-        return 1;
+    if(btn->timer==NULL){
+        btn->timer=timerAllocate(timer_pool);
+        
+        //if unable to allocater timer
+        if(btn->timer==NULL)
+            return 1;
+        //Add the user context, to be used in the timer callback in the main keypad   
+        btn->timer->timerRegisterUserContext(btn->timer,(void*)self);
+        
+    }
+
     timer_interface_t* timer=btn->timer;
     uint32_t time_period=btn->time_period;
 
@@ -117,12 +125,14 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     
     evt_data.timestamp=current_time;
 
+    ESP_LOGI(TAG,"button mp event %d",evt);
 
     switch(current_button_state){
         
         case BUTTON_STATE_IDLE:
                                 if(evt==BUTTON_STATE_EVENT_PRESSED){
                                     next_button_state=BUTTON_STATE_PROBABLE_PRESS;
+                                    ESP_LOGI(TAG,"t interval %"PRIu32,btn->time_period);
                                     timer->timerSetInterval(timer,btn->time_period);
                                     timer->timerStart(timer,TIMER_ONESHOT);
                                 }
@@ -163,6 +173,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
         case BUTTON_STATE_PRESSED_BOUNCING_MAKE: //Timer allocated, if it stays BOUNCING, for BOUNCING_TIME
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
+                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>DEBOUNCING_DURATION){
                                              next_button_state=BUTTON_STATE_PRESSED;
                                              //Again record time for long press detection
@@ -185,6 +196,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
         case BUTTON_STATE_PRESSED:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
+                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>LONG_PRESS_DURATION){
                                             next_button_state=BUTTON_STATE_PRESSED_LONG;
                                             
@@ -212,6 +224,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
         case BUTTON_STATE_PRESSED_LONG:
                                     if(evt==BUTTON_STATE_EVENT_PRESSED){
+                                        ESP_LOGI(TAG,"pt %"PRIu32 " ct %"PRIu32 " diff %"PRIu32,current_time,*previous_time,current_time-*previous_time);
                                         if((current_time-*previous_time)>REPEAT_PRESS_DURATION){
                                              //Again record time for repeat press detection
                                              //This info must be propagated to user
@@ -244,7 +257,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
                                             
                                     else{
-                                            next_button_state=BUTTON_STATE_RELEASED;
+                                            next_button_state=BUTTON_STATE_IDLE;
                                             //Return the timer to pool
                                             timerReturn(timer_pool,timer);
                                             evt_data.event=BUTTON_EVENT_RELEASED;
@@ -317,7 +330,7 @@ button_interface_t* keypadButtonCreate(button_config_t* config){
 
     self->button_id=button_id;
     self->button_index=button_index;
-    self->state=BUTTON_STATE_RELEASED;
+    self->state=BUTTON_STATE_IDLE;
     self->time_period=scan_time_period;                   //in microseconds , must be greater than prober time  period
 
     
