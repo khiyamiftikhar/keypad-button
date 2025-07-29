@@ -1,11 +1,13 @@
-
-#include "stddef.h"
+#include <stdio.h>
+#include <stddef.h>
+#include "esp_log.h"
 #include "my_timer.h"
 #include "keypad_button.h"
 
 
+static const char* TAG="button";
 #define TOTAL_BUTTON_OBJECTS        CONFIG_TOTAL_BUTTON_OBJECTS
-#define DEBOUNCING_DURATION         (CONFIG_DEBOUNCING_DURATION*1000)   //Convert to micro
+#define DEBOUNCING_DURATION         (CONFIG_DEBOUNCE_DURATION*1000)   //Convert to micro
 #define LONG_PRESS_DURATION         (CONFIG_LONG_PRESS_DURATION*1000)
 #define REPEAT_PRESS_DURATION       (CONFIG_REPEAT_PRESS_DURATION*1000)
 
@@ -77,7 +79,7 @@ static timer_interface_t* timerAllocate(pool_alloc_interface_t* timer_pool){
     return timer;
 }
 
-static timer_interface_t* timerReturn(pool_alloc_interface_t* timer_pool,timer_interface_t* timer){
+static void timerReturn(pool_alloc_interface_t* timer_pool,timer_interface_t* timer){
     timer_pool->poolFill(timer_pool,(void*)timer);
     //Must set it to NULL
     timer=NULL;
@@ -98,6 +100,11 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
     
     pool_alloc_interface_t* timer_pool = (pool_alloc_interface_t*) btn->timer_pool;
+
+    btn->timer=timerAllocate(timer_pool);
+
+    if(btn->timer==NULL)
+        return 1;
     timer_interface_t* timer=btn->timer;
     uint32_t time_period=btn->time_period;
 
@@ -108,15 +115,16 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     button_event_data_t evt_data={.button_id=btn->button_id,
                                     .timestamp=current_time};
     
-                                            evt_data.timestamp=current_time;
+    evt_data.timestamp=current_time;
+
 
     switch(current_button_state){
         
         case BUTTON_STATE_IDLE:
-                                if(evt==BUTTON_EVENT_PRESSED){
+                                if(evt==BUTTON_STATE_EVENT_PRESSED){
                                     next_button_state=BUTTON_STATE_PROBABLE_PRESS;
-                                    timer->timerSetInterval(&timer,btn->time_period);
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerSetInterval(timer,btn->time_period);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
                                 }
                                 //Else can never come bcz timer not started
                                 else
@@ -126,7 +134,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
                               
         case BUTTON_STATE_PROBABLE_PRESS:
-                                    if(evt==BUTTON_EVENT_PRESSED){
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                         
                                         next_button_state=BUTTON_STATE_PRESSED_BOUNCING_BREAK;
                                         *previous_time=timer->timerGetCurrentTime();
@@ -136,12 +144,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
                                     
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
 
                                     break;
 
         case BUTTON_STATE_PRESSED_BOUNCING_BREAK:                       //If timer expires in the BOUNCING_MAKE, it will come to this break
-                                    if(evt==BUTTON_EVENT_PRESSED){
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                         next_button_state=BUTTON_STATE_PRESSED_BOUNCING_MAKE;
                                         *previous_time=timer->timerGetCurrentTime();
                                     }
@@ -149,12 +157,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                         next_button_state=BUTTON_STATE_PROBABLE_PRESS;
                                     }
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
                                     break;
                                     
 
         case BUTTON_STATE_PRESSED_BOUNCING_MAKE: //Timer allocated, if it stays BOUNCING, for BOUNCING_TIME
-                                    if(evt==BUTTON_EVENT_PRESSED){
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                         if((current_time-*previous_time)>DEBOUNCING_DURATION){
                                              next_button_state=BUTTON_STATE_PRESSED;
                                              //Again record time for long press detection
@@ -171,12 +179,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
 
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
 
                                     break;
 
         case BUTTON_STATE_PRESSED:
-                                    if(evt==BUTTON_EVENT_PRESSED){
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                         if((current_time-*previous_time)>LONG_PRESS_DURATION){
                                             next_button_state=BUTTON_STATE_PRESSED_LONG;
                                             
@@ -198,12 +206,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     }
 
                                     //Restart the timer irrespective of what event occurs
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
                                     
                                     break;                                        
 
         case BUTTON_STATE_PRESSED_LONG:
-                                    if(evt==BUTTON_EVENT_PRESSED){
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                         if((current_time-*previous_time)>REPEAT_PRESS_DURATION){
                                              //Again record time for repeat press detection
                                              //This info must be propagated to user
@@ -216,35 +224,38 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     else{
                                         next_button_state=BUTTON_STATE_RELEASED_BOUNCING_BREAK;
                                     }
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
                                     break;                                        
         case BUTTON_STATE_RELEASED_BOUNCING_BREAK:
-                                    if(evt==BUTTON_EVENT_PRESSED)
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED)
                                             next_button_state=BUTTON_STATE_PRESSED_LONG;
                                             
                                     else{
                                             next_button_state=BUTTON_STATE_PRESSED_BOUNCING_MAKE;
                                     }
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    timer->timerStart(timer,TIMER_ONESHOT);
 
                                     break;
 
         case BUTTON_STATE_RELEASED_BOUNCING_MAKE:
-                                    if(evt==BUTTON_EVENT_PRESSED)
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
                                             next_button_state=BUTTON_STATE_PRESSED_BOUNCING_BREAK;
+                                            timer->timerStart(timer,TIMER_ONESHOT);
+                                    }
                                             
                                     else{
                                             next_button_state=BUTTON_STATE_RELEASED;
-                                            
+                                            //Return the timer to pool
+                                            timerReturn(timer_pool,timer);
                                             evt_data.event=BUTTON_EVENT_RELEASED;
                                             btn->cb(btn->button_index,&evt_data,btn->context);
                                     }
-                                    timer->timerStart(&timer,TIMER_ONESHOT);
+                                    
                                     break;
                                     
         case BUTTON_STATE_RELEASED:
                                 //same as IDLE
-                                if(evt==BUTTON_EVENT_PRESSED)
+                                if(evt==BUTTON_STATE_EVENT_PRESSED)
                                     next_button_state=BUTTON_STATE_PROBABLE_PRESS;
                                 else
                                     next_button_state=current_button_state;
@@ -253,8 +264,8 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
     }
 
     *state=next_button_state;
-
-
+    ESP_LOGI(TAG,"bt st %d",*state);
+    return 0;
 }
 
 
@@ -285,13 +296,17 @@ static void poolReturn(){
 
 button_interface_t* keypadButtonCreate(button_config_t* config){
     if(config==NULL)
-        ERR_BUTTON_INVALID_MEM;
+        return NULL;
 
     //Get button object from the static button pool
     keypad_button_t* self=poolGet();
 
     if(self==NULL)
         return NULL;
+    if(config->timer_pool==NULL){
+        ESP_LOGI(TAG,"no pool");
+        return NULL;
+    }
         
     uint8_t button_index=config->button_index;
     uint8_t button_id=config->button_id;            //e.g 'A' etc
@@ -304,11 +319,13 @@ button_interface_t* keypadButtonCreate(button_config_t* config){
     self->button_index=button_index;
     self->state=BUTTON_STATE_RELEASED;
     self->time_period=scan_time_period;                   //in microseconds , must be greater than prober time  period
+
+    
     self->timer_pool=config->timer_pool;
     self->timer=NULL;                               //Timer is allocated dynamically
     //self->timer_pool=timer_pool;
     self->context=config->context;
     self->cb=cb;
-
-    return self;
+    self->interface.buttonEventInform=buttonStateUpdateEventHandler;
+    return &self->interface;
 }
