@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <stdbool.h>
+#include <string.h>
 #include "esp_log.h"
 #include "my_timer.h"
 #include "keypad_button.h"
@@ -41,6 +43,7 @@ typedef struct keypad_button{
     uint32_t time_period;       //The time period for the timer.
     uint32_t previous_time;     //For keeping track of debouncing duration and long press
     button_state_t state;
+    bool long_pressed;
     buttonCallBack cb;        
     void* context;              //To know which user (keyboard) instance it belongs to
     button_interface_t interface;
@@ -107,8 +110,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
         btn->timer=timerAllocate(timer_pool);
         
         //if unable to allocater timer
-        if(btn->timer==NULL)
+        if(btn->timer==NULL){
+            ESP_LOGI(TAG,"not allocated");
             return 1;
+        }
+        
+        ESP_LOGI(TAG,"allocated %d",btn->button_index);
         //Add the user context, to be used in the timer callback in the main keypad   
         btn->timer->timerRegisterUserContext(btn->timer,(void*)self);
         //This is the first occurance so set previous time to 0;
@@ -141,8 +148,19 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     timer->timerStart(timer,TIMER_ONESHOT);
                                 }
                                 //Else can never come bcz timer not started
-                                else
+                                else{
+                                    if(timer!=NULL){
+
+                                        ESP_LOGI(TAG,"dealloc %d",btn->button_index);
+                                        timer->timerStop(timer);
+                                            //Return the timer to pool
+                                        timerReturn(timer_pool,timer);
+                                            //This is problematic. What if the same button is pressed again
+                                            //before this NULL statement runs. must be throughly analyzed
+                                        btn->timer=NULL;
+                                    }
                                     next_button_state=current_button_state;
+                                }
                                 break;
                                 
 
@@ -153,8 +171,15 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                         next_button_state=BUTTON_STATE_PRESSED_BOUNCING_BREAK;
                                         *previous_time=timer->timerGetCurrentTime();
                                     }
+
                                     else {//If timer elapsed event comes
                                         next_button_state=BUTTON_STATE_IDLE;
+                                        timer->timerStop(timer);
+                                            //Return the timer to pool
+                                        timerReturn(timer_pool,timer);
+                                            //This is problematic. What if the same button is pressed again
+                                            //before this NULL statement runs. must be throughly analyzed
+                                        btn->timer=NULL;
                                     }
                                     
                                     //Restart the timer irrespective of what event occurs
@@ -209,6 +234,8 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             //Again record time for repeat press detection
                                             *previous_time=timer->timerGetCurrentTime();
                                             evt_data.event=BUTTON_EVENT_PRESSED_LONG;
+                                            //So that comes back to this state frm BUTTON_STATE_RELEASED_BOUNCING_BREAK if it is true
+                                            btn->long_pressed=true;
                                             btn->cb(btn->button_index,&evt_data,btn->context);
                                             
                                         }
@@ -245,8 +272,12 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                     timer->timerRestart(timer);
                                     break;                                        
         case BUTTON_STATE_RELEASED_BOUNCING_BREAK:
-                                    if(evt==BUTTON_STATE_EVENT_PRESSED)
+                                    if(evt==BUTTON_STATE_EVENT_PRESSED){
+                                        if(btn->long_pressed==true)
+                                            next_button_state=BUTTON_STATE_PRESSED_LONG;
+                                        else
                                             next_button_state=BUTTON_STATE_PRESSED;
+                                    }
                                             
                                     else{
                                             next_button_state=BUTTON_STATE_RELEASED_BOUNCING_MAKE;
@@ -263,10 +294,15 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
                                             
                                     else{
                                             next_button_state=BUTTON_STATE_IDLE;
+                                            btn->long_pressed=false;
+                                            ESP_LOGI(TAG,"dealloc %d",btn->button_index);
                                             //Stop the timer
                                             timer->timerStop(timer);
                                             //Return the timer to pool
                                             timerReturn(timer_pool,timer);
+                                            //This is problematic. What if the same button is pressed again
+                                            //before this NULL statement runs. must be throughly analyzed
+                                            btn->timer=NULL;
                                             evt_data.event=BUTTON_EVENT_RELEASED;
                                             btn->cb(btn->button_index,&evt_data,btn->context);
                                     }
@@ -285,7 +321,7 @@ static int buttonStateUpdateEventHandler(button_interface_t* self,button_state_u
 
     *state=next_button_state;
     btn->debug_previous_time=current_time;
-    ESP_LOGI(TAG,"bt st %d",*state);
+    ESP_LOGI(TAG,"bt index %d st %d",btn->button_index,*state);
     return 0;
 }
 
@@ -328,7 +364,8 @@ button_interface_t* keypadButtonCreate(button_config_t* config){
         ESP_LOGI(TAG,"no pool");
         return NULL;
     }
-        
+    //Specifically did this for the bool long_pressed
+    memset(self,0,sizeof(keypad_button_t));        
     uint8_t button_index=config->button_index;
     uint8_t button_id=config->button_id;            //e.g 'A' etc
     //void* timer_pool=;           //to allocate and deallocate the timer object. Timer is allocated dynamicalyy but atomically nonblocking way the total avialble is checked first to decide whether wait ior not
