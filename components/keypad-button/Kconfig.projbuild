@@ -1,5 +1,4 @@
 menu "Keypad Button"
-    
     config TOTAL_BUTTON_OBJECTS
         int "Total number of button objects"
         default 16
@@ -27,6 +26,4 @@ menu "Keypad Button"
         range 400 500
         help
             If button kept press after long press, after every repeat duration new press will be considered
-
-
 endmenu
